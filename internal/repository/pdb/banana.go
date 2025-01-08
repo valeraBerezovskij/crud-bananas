@@ -7,17 +7,17 @@ import (
 	"valerii/crudbananas/pkg/database"
 )
 
-type ItemPostgres struct {
+type Bananas struct {
 	db *sql.DB
 }
 
-func NewItemPostgres(db *sql.DB) *ItemPostgres {
-	return &ItemPostgres{
+func NewBananas(db *sql.DB) *Bananas {
+	return &Bananas{
 		db: db,
 	}
 }
 
-func (p *ItemPostgres) Create(banana domain.Banana) (int, error) {
+func (p *Bananas) Create(banana domain.Banana) (int, error) {
 	var id int
 	query := fmt.Sprintf("insert into %s(name, color, length) values($1, $2, $3) RETURNING id", database.BananaTable)
 	row := p.db.QueryRow(query, banana.Name, banana.Color, banana.Length)
@@ -27,7 +27,7 @@ func (p *ItemPostgres) Create(banana domain.Banana) (int, error) {
 	return id, nil
 }
 
-func (p *ItemPostgres) GetAll() ([]domain.Banana, error) {
+func (p *Bananas) GetAll() ([]domain.Banana, error) {
 	bananas := make([]domain.Banana, 0)
 	query := fmt.Sprintf("select * from %s", database.BananaTable)
 	rows, err := p.db.Query(query)
@@ -47,7 +47,7 @@ func (p *ItemPostgres) GetAll() ([]domain.Banana, error) {
 	return bananas, nil
 }
 
-func (p *ItemPostgres) GetById(id int) (domain.Banana, error) {
+func (p *Bananas) GetById(id int) (domain.Banana, error) {
 	var banana domain.Banana
 	query := fmt.Sprintf("select * from %s where id = $1", database.BananaTable)
 	row := p.db.QueryRow(query, id)
@@ -58,7 +58,7 @@ func (p *ItemPostgres) GetById(id int) (domain.Banana, error) {
 	return banana, nil
 }
 
-func (p *ItemPostgres) Update(id int, banana domain.BananaUpdate) error {
+func (p *Bananas) Update(id int, banana domain.BananaUpdate) error {
 	query := fmt.Sprintf("UPDATE %s SET %s = $1, %s = $2, %s = $3 WHERE id = $4",
 		database.BananaTable, "name", "color", "length")
 	result, err := p.db.Exec(query, &banana.Name, banana.Color, banana.Length, id)
@@ -78,7 +78,7 @@ func (p *ItemPostgres) Update(id int, banana domain.BananaUpdate) error {
 	return nil
 }
 
-func (p *ItemPostgres) Delete(id int) error {
+func (p *Bananas) Delete(id int) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE id = $1", database.BananaTable)
 	result, err := p.db.Exec(query, id)
 	if err != nil {

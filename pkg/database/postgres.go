@@ -7,6 +7,7 @@ import (
 
 const (
 	BananaTable = "banana"
+	UsersTable = "users"
 )
 
 type ConnectionInfo struct {

@@ -7,19 +7,22 @@ import (
 	"valerii/crudbananas/internal/server"
 	"valerii/crudbananas/internal/service"
 	"valerii/crudbananas/pkg/database"
+	"valerii/crudbananas/pkg/hasher"
 
 	"os/signal"
 	"syscall"
 
 	"context"
+	"time"
+
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"time"
 )
 
 func Run() {
+	//Инициализация логгера, конфига и env 
 	initLogger()
 
 	if err := initConfig(); err != nil {
@@ -30,6 +33,7 @@ func Run() {
 		log.Fatalf("error loading env file: %s", err.Error())
 	}
 
+	//Инициализация структуры БД
 	db, err := database.NewPostgresConnection(database.ConnectionInfo{
 		Host:     os.Getenv("DB_HOST"),
 		Port:     os.Getenv("DB_PORT"),
@@ -41,11 +45,23 @@ func Run() {
 	if err != nil {
 		log.Fatalf("failed to initialize db: %s", err.Error())
 	}
+	defer db.Close()
 
-	repos := pdb.NewRepository(db)
-	services := service.NewService(repos)
-	handlers := rest.NewHandler(services)
+	//Инициализация хеша
+	hasher := hasher.NewSHA1Hasher("salt")
 
+	//Инициализация репозитория и сервиса для бананов
+	bananasRepo := pdb.NewBananas(db)
+	bananasService := service.NewBananas(bananasRepo)
+
+	//Инициализация репозитория и сервиса для пользователей
+	usersRepo := pdb.NewUsers(db)
+	usersService := service.NewUsers(usersRepo, hasher)
+
+	//Инициализация хендлера
+	handlers := rest.NewHandler(bananasService, usersService)
+
+	//Запуск сервера
 	srv := new(server.Server)
 	go func() {
 		if err := srv.Run(viper.GetString("port"), handlers.InitRoutes()); err != nil {
@@ -54,6 +70,7 @@ func Run() {
 	}()
 	log.Info("Server started")
 
+	//Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
