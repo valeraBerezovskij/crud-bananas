@@ -1,15 +1,16 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"context"
 	"strconv"
+	"time"
 	"valerii/crudbananas/internal/domain"
 )
 
-func (h *Handler) routeHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) routeBananas(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path[len("/api/items/"):]
 	if path == "" {
 		h.redirect(w, r)
@@ -57,6 +58,9 @@ func (h *Handler) redirectWithID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second * 3)
+	defer cancel()
+
 	w.Header().Set("Content-Type", "application/json")
 
 	var banana domain.Banana
@@ -67,7 +71,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdBanana, err := h.bananaService.Create(banana)
+	createdBanana, err := h.bananaService.Create(ctx, banana)
 	if err != nil {
 		logError("create", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -83,13 +87,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getAll(w http.ResponseWriter, r *http.Request) {
-	bananas, err := h.bananaService.GetAll()
+	bananas, err := h.bananaService.GetAll(r.Context())
 	if err != nil {
 		logError("getAll", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
+	
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -102,12 +106,12 @@ func (h *Handler) getAll(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value("id").(int)
 	if !ok {
-		logError("delete", fmt.Errorf("ID not found in context"))
+		logError("getByID", fmt.Errorf("ID not found in context"))
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	banana, err := h.bananaService.GetById(id)
+	banana, err := h.bananaService.GetById(r.Context(), id)
 	if err != nil {
 		logError("getByID", err)
 		w.WriteHeader(http.StatusNotFound)
@@ -143,7 +147,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.bananaService.Update(id, banana)
+	err := h.bananaService.Update(r.Context(), id, banana)
 	if err != nil {
 		logError("update", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -162,7 +166,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.bananaService.Delete(id)
+	err := h.bananaService.Delete(r.Context(), id)
 	if err != nil {
 		logError("delete", err)
 		w.WriteHeader(http.StatusInternalServerError)

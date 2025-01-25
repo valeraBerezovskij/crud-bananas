@@ -2,14 +2,15 @@ package service
 
 import (
 	"valerii/crudbananas/internal/domain"
+	"context"
 )
 
 type BananaRepository interface {
-	Create(banana domain.Banana) (int, error)
-	GetAll() ([]domain.Banana, error)
-	GetById(id int) (domain.Banana, error)
-	Update(id int, banana domain.BananaUpdate) error
-	Delete(id int) error
+	Create(ctx context.Context, banana domain.Banana) (int, error)
+	GetAll(ctx context.Context) ([]domain.Banana, error)
+	GetById(ctx context.Context, id int) (domain.Banana, error)
+	Update(ctx context.Context, id int, banana domain.BananaUpdate) error
+	Delete(ctx context.Context, id int) error
 }
 
 type Bananas struct {
@@ -22,22 +23,22 @@ func NewBananas(repo BananaRepository) *Bananas {
 	}
 }
 
-func (p *Bananas) Create(banana domain.Banana) (int, error) {
-	return p.repo.Create(banana)
+func (p *Bananas) Create(ctx context.Context, banana domain.Banana) (int, error) {
+	return p.repo.Create(ctx, banana)
 }
 
-func (p *Bananas) GetAll() ([]domain.Banana, error) {
-	return p.repo.GetAll()
+func (p *Bananas) GetAll(ctx context.Context) ([]domain.Banana, error) {
+	return p.repo.GetAll(ctx)
 }
 
-func (p *Bananas) GetById(id int) (domain.Banana, error) {
-	return p.repo.GetById(id)
+func (p *Bananas) GetById(ctx context.Context, id int) (domain.Banana, error) {
+	return p.repo.GetById(ctx, id)
 }
 
-func (p *Bananas) Update(id int, banana domain.BananaUpdate) error {
-	return p.repo.Update(id, banana)
+func (p *Bananas) Update(ctx context.Context, id int, banana domain.BananaUpdate) error {
+	return p.repo.Update(ctx, id, banana)
 }
 
-func (p *Bananas) Delete(id int) error {
-	return p.repo.Delete(id)
+func (p *Bananas) Delete(ctx context.Context, id int) error {
+	return p.repo.Delete(ctx, id)
 }

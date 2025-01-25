@@ -56,7 +56,7 @@ func Run() {
 
 	//Инициализация репозитория и сервиса для пользователей
 	usersRepo := pdb.NewUsers(db)
-	usersService := service.NewUsers(usersRepo, hasher)
+	usersService := service.NewUsers(usersRepo, hasher, []byte("our big secret"))
 
 	//Инициализация хендлера
 	handlers := rest.NewHandler(bananasService, usersService)

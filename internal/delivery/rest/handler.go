@@ -8,16 +8,16 @@ import (
 
 type User interface {
 	SignUp(ctx context.Context, inp domain.SignUpInput) error
-	//SignIn(ctx context.Context, inp domain.SignInInput) (string, error)
-	//ParseToken(ctx context.Context, token string) (int64, error)
+	SignIn(ctx context.Context, inp domain.SignInInput) (string, error)
+	ParseToken(ctx context.Context, token string) (int64, error)
 }
 
 type BananaItem interface {
-	Create(banana domain.Banana) (int, error)
-	GetAll() ([]domain.Banana, error)
-	GetById(id int) (domain.Banana, error)
-	Update(id int, banana domain.BananaUpdate) error
-	Delete(id int) error
+	Create(ctx context.Context, banana domain.Banana) (int, error)
+	GetAll(ctx context.Context, ) ([]domain.Banana, error)
+	GetById(ctx context.Context, id int) (domain.Banana, error)
+	Update(ctx context.Context, id int, banana domain.BananaUpdate) error
+	Delete(ctx context.Context, id int) error
 }
 
 type Handler struct {
@@ -35,10 +35,17 @@ func NewHandler(bananaService BananaItem, userService User) *Handler {
 func (h *Handler) InitRoutes() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/auth/sign-up", h.SignUp) //POST
-	//mux.HandleFunc("/api/auth/sign-up", h.SignIn) //GET
+	//Узел на аунтитефикацию и регистрацию
+	mux.HandleFunc("/api/auth/", h.routeAuth)
 
-	mux.HandleFunc("/api/items/", h.routeHandler)
+	//Защищенный узел на все методы взаимодействия с объектами
+	//Требуется аунтетификация (токен)
+	protectedMux := http.NewServeMux()
+	protectedMux.HandleFunc("/api/items/", h.routeBananas)
+
+	protectedRoutes := h.authMiddleware(protectedMux)
+
+	mux.Handle("/api/items/", protectedRoutes)
 
 	return loggingMiddleware(mux)
 }

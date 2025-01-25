@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"valerii/crudbananas/internal/domain"
 	"valerii/crudbananas/pkg/database"
+	"context"
 )
 
 type Bananas struct {
@@ -17,17 +18,17 @@ func NewBananas(db *sql.DB) *Bananas {
 	}
 }
 
-func (p *Bananas) Create(banana domain.Banana) (int, error) {
+func (p *Bananas) Create(ctx context.Context, banana domain.Banana) (int, error) {
 	var id int
 	query := fmt.Sprintf("insert into %s(name, color, length) values($1, $2, $3) RETURNING id", database.BananaTable)
-	row := p.db.QueryRow(query, banana.Name, banana.Color, banana.Length)
+	row := p.db.QueryRowContext(ctx, query, banana.Name, banana.Color, banana.Length)
 	if err := row.Scan(&id); err != nil {
 		return 0, err
 	}
 	return id, nil
 }
 
-func (p *Bananas) GetAll() ([]domain.Banana, error) {
+func (p *Bananas) GetAll(ctx context.Context) ([]domain.Banana, error) {
 	bananas := make([]domain.Banana, 0)
 	query := fmt.Sprintf("select * from %s", database.BananaTable)
 	rows, err := p.db.Query(query)
@@ -47,7 +48,7 @@ func (p *Bananas) GetAll() ([]domain.Banana, error) {
 	return bananas, nil
 }
 
-func (p *Bananas) GetById(id int) (domain.Banana, error) {
+func (p *Bananas) GetById(ctx context.Context, id int) (domain.Banana, error) {
 	var banana domain.Banana
 	query := fmt.Sprintf("select * from %s where id = $1", database.BananaTable)
 	row := p.db.QueryRow(query, id)
@@ -58,7 +59,7 @@ func (p *Bananas) GetById(id int) (domain.Banana, error) {
 	return banana, nil
 }
 
-func (p *Bananas) Update(id int, banana domain.BananaUpdate) error {
+func (p *Bananas) Update(ctx context.Context, id int, banana domain.BananaUpdate) error {
 	query := fmt.Sprintf("UPDATE %s SET %s = $1, %s = $2, %s = $3 WHERE id = $4",
 		database.BananaTable, "name", "color", "length")
 	result, err := p.db.Exec(query, &banana.Name, banana.Color, banana.Length, id)
@@ -78,7 +79,7 @@ func (p *Bananas) Update(id int, banana domain.BananaUpdate) error {
 	return nil
 }
 
-func (p *Bananas) Delete(id int) error {
+func (p *Bananas) Delete(ctx context.Context, id int) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE id = $1", database.BananaTable)
 	result, err := p.db.Exec(query, id)
 	if err != nil {
