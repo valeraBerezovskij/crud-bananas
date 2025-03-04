@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	grpc_client "valerii/crudbananas/internal/delivery/grpc"
 	"valerii/crudbananas/internal/delivery/rest"
 	"valerii/crudbananas/internal/repository/pdb"
 	"valerii/crudbananas/internal/server"
@@ -22,17 +23,18 @@ import (
 )
 
 func Run() {
-	//Инициализация логгера, конфига и env 
+	//Инициализация логгера, конфига и env
 	initLogger()
 
 	if err := initConfig(); err != nil {
 		log.Fatalf("error initializing configs: %s", err.Error())
 	}
-
+	
 	if err := godotenv.Load(); err != nil {
 		log.Fatalf("error loading env file: %s", err.Error())
 	}
-
+	
+	log.Println("DB_PORT:", os.Getenv("DB_PORT"))
 	//Инициализация структуры БД
 	db, err := database.NewPostgresConnection(database.ConnectionInfo{
 		Host:     os.Getenv("DB_HOST"),
@@ -50,13 +52,20 @@ func Run() {
 	//Инициализация хеша
 	hasher := hasher.NewSHA1Hasher("salt")
 
-	//Инициализация репозитория и сервиса для бананов
+	//Инициализация репозиториев
 	bananasRepo := pdb.NewBananas(db)
-	bananasService := service.NewBananas(bananasRepo)
-
-	//Инициализация репозитория и сервиса для пользователей
+	tokensRepo := pdb.NewTokens(db)
 	usersRepo := pdb.NewUsers(db)
-	usersService := service.NewUsers(usersRepo, hasher, []byte("our big secret"))
+	
+	//Инициализация gRPC клиента
+	auditClient, err := grpc_client.NewClient(9000)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	//Инициализация сервисов
+	bananasService := service.NewBananas(bananasRepo, auditClient)
+	usersService := service.NewUsers(usersRepo, tokensRepo, auditClient, hasher, []byte("sample secret"))
 
 	//Инициализация хендлера
 	handlers := rest.NewHandler(bananasService, usersService)

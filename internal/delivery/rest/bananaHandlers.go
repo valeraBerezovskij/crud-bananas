@@ -61,8 +61,6 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second * 3)
 	defer cancel()
 
-	w.Header().Set("Content-Type", "application/json")
-
 	var banana domain.Banana
 
 	if err := json.NewDecoder(r.Body).Decode(&banana); err != nil {
@@ -76,8 +74,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		logError("create", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
-	}
+	}	
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(createdBanana); err != nil {
 		logError("create", err)

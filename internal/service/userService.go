@@ -6,10 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt"
+	"github.com/sirupsen/logrus"
+	audit "github.com/valeraBerezovskij/logger-mongo/pkg/domain"
+	"math/rand"
 	"strconv"
 	"time"
 	"valerii/crudbananas/internal/domain"
 )
+
+type AuditClient interface {
+	SendLogRequest(ctx context.Context, req audit.LogItem) error
+}
 
 type PasswordHasher interface {
 	Hash(password string) (string, error)
@@ -20,18 +27,27 @@ type UsersRepository interface {
 	GetByCredentials(ctx context.Context, email, password string) (domain.User, error)
 }
 
+type SessionsRepository interface {
+	Create(ctx context.Context, token domain.RefreshSession) error
+	Get(ctx context.Context, token string) (domain.RefreshSession, error)
+}
+
 type Users struct {
-	repo   UsersRepository
-	hasher PasswordHasher
+	userRepo    UsersRepository
+	sessionRepo SessionsRepository
+	hasher      PasswordHasher
+	auditClient AuditClient
 
 	hmacSecret []byte //Подпись для jwt токена
 }
 
-func NewUsers(repo UsersRepository, hasher PasswordHasher, secret []byte) *Users {
+func NewUsers(userRepo UsersRepository, sessionRepo SessionsRepository, auditClient AuditClient, hasher PasswordHasher, secret []byte) *Users {
 	return &Users{
-		repo:       repo,
-		hasher:     hasher,
-		hmacSecret: secret,
+		userRepo:    userRepo,
+		sessionRepo: sessionRepo,
+		hasher:      hasher,
+		auditClient: auditClient,
+		hmacSecret:  secret,
 	}
 }
 
@@ -51,31 +67,67 @@ func (s *Users) SignUp(ctx context.Context, inp domain.SignUpInput) error {
 	}
 
 	//Передаем на уровень репозитория
-	return s.repo.Create(ctx, user)
+	if err := s.userRepo.Create(ctx, user); err != nil {
+		return err
+	}
+
+	//Получения user'a для ID
+	user, err = s.userRepo.GetByCredentials(ctx, inp.Email, password)
+	if err != nil {
+		return err
+	}
+
+	//Логирование
+	if err := s.auditClient.SendLogRequest(ctx, audit.LogItem{
+		Action:    audit.ACTION_REGISTER,
+		Entity:    audit.ENTITY_USER,
+		EntityID:  user.ID,
+		Timestamp: time.Now(),
+	}); err != nil {
+		logrus.WithFields(logrus.Fields{
+			"method": "Users.SignUp",
+		}).Error("failed to send log request:", err)
+	}
+
+	return nil
 }
 
-func (s *Users) SignIn(ctx context.Context, inp domain.SignInInput) (string, error) {
+func (s *Users) SignIn(ctx context.Context, inp domain.SignInInput) (string, string, error) {
+	//хеширование пароля
 	password, err := s.hasher.Hash(inp.Password)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	user, err := s.repo.GetByCredentials(ctx, inp.Email, password)
+	//Получение user ID с помощью email и passoword
+	user, err := s.userRepo.GetByCredentials(ctx, inp.Email, password)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", domain.ErrUserNotFound
+			return "", "", domain.ErrUserNotFound
 		}
 
-		return "", err
+		return "", "", err
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.StandardClaims{
-		Subject:   strconv.Itoa(int(user.ID)),
-		IssuedAt:  time.Now().Unix(),
-		ExpiresAt: time.Now().Add(time.Minute * 15).Unix(),
-	})
+	//Генерируем токены 
+	accessToken, refreshToken, err := s.generateTokens(ctx, user.ID)
+	if err != nil{
+		return "", "", err
+	}
 
-	return token.SignedString(s.hmacSecret)
+	//Логгирование
+	if err := s.auditClient.SendLogRequest(ctx, audit.LogItem{
+		Action: audit.ACTION_LOGIN,
+		Entity: audit.ENTITY_USER,
+		EntityID: user.ID,
+		Timestamp: time.Now(),
+	}); err != nil{
+		logrus.WithFields(logrus.Fields{
+			"method": "Users.SignIn",
+		}).Error("failed to send log request:", err)
+	}
+
+	return accessToken, refreshToken, nil
 }
 
 func (s *Users) ParseToken(ctx context.Context, token string) (int64, error) {
@@ -108,11 +160,72 @@ func (s *Users) ParseToken(ctx context.Context, token string) (int64, error) {
 		return 0, errors.New("invalid subject")
 	}
 
-	//Преобразуем ID в int 
+	//Преобразуем ID в int
 	id, err := strconv.Atoi(subject)
 	if err != nil {
 		return 0, errors.New("invalid subject")
 	}
 
 	return int64(id), nil
+}
+
+/*
+	generateTokens() генерирует access и refresh токены
+	и создает их БД
+*/
+func (s *Users) generateTokens(ctx context.Context, userId int64) (string, string, error) {
+	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.StandardClaims{
+		Subject:   strconv.Itoa(int(userId)),
+		IssuedAt:  time.Now().Unix(),
+		ExpiresAt: time.Now().Add(time.Minute * 10).Unix(),
+	})
+
+	//Генерация access токена
+	accessToken, err := t.SignedString(s.hmacSecret)
+	if err != nil {
+		return "", "", err
+	}
+
+	//Генерация refresh токена
+	refreshToken, err := newRefreshToken()
+	if err != nil {
+		return "", "", err
+	}
+
+	//Создание токена в базе данных
+	if err := s.sessionRepo.Create(ctx, domain.RefreshSession{
+		UserID:    userId,
+		Token:     refreshToken,
+		ExpiresAt: time.Now().Add(time.Hour * 24 * 30),
+	}); err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func newRefreshToken() (string, error) {
+	b := make([]byte, 32)
+
+	s := rand.NewSource(time.Now().Unix())
+	r := rand.New(s)
+
+	if _, err := r.Read(b); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", b), nil
+}
+
+func (s *Users) RefreshTokens(ctx context.Context, refreshToken string) (string, string, error) {
+	session, err := s.sessionRepo.Get(ctx, refreshToken)
+	if err != nil {
+		return "", "", err
+	}
+
+	if session.ExpiresAt.Unix() < time.Now().Unix() {
+		return "", "", domain.ErrRefreshTokenExpired
+	}
+
+	return s.generateTokens(ctx, session.UserID)
 }

@@ -8,8 +8,9 @@ import (
 
 type User interface {
 	SignUp(ctx context.Context, inp domain.SignUpInput) error
-	SignIn(ctx context.Context, inp domain.SignInInput) (string, error)
+	SignIn(ctx context.Context, inp domain.SignInInput) (string, string, error)
 	ParseToken(ctx context.Context, token string) (int64, error)
+	RefreshTokens(ctx context.Context, refreshToken string) (string, string, error)
 }
 
 type BananaItem interface {
@@ -37,6 +38,7 @@ func (h *Handler) InitRoutes() http.Handler {
 
 	//Узел на аунтитефикацию и регистрацию
 	mux.HandleFunc("/api/auth/", h.routeAuth)
+	mux.HandleFunc("/api/auth/refresh", h.refresh)
 
 	//Защищенный узел на все методы взаимодействия с объектами
 	//Требуется аунтетификация (токен)

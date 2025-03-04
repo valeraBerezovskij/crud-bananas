@@ -3,9 +3,12 @@ package rest
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"valerii/crudbananas/internal/domain"
+
+	"github.com/sirupsen/logrus"
 )
 
 func (h *Handler) routeAuth(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +80,7 @@ func (h *Handler) SignIn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Отправляем на уровень сервиса
-	token, err := h.userService.SignIn(r.Context(), inp)
+	accessToken, refreshToken, err := h.userService.SignIn(r.Context(), inp)
 	if err != nil{
 		if errors.Is(err, domain.ErrUserNotFound){
 			handleNotFoundError(w, err)
@@ -91,15 +94,48 @@ func (h *Handler) SignIn(w http.ResponseWriter, r *http.Request) {
 
 	//записываем token в ответ
 	response, err := json.Marshal(map[string]string{
-		"token": token,
+		"token": accessToken,
 	})
 	if err != nil{
+		fmt.Println("sgs")
 		logError("signIn", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	//Отправляем ответ на клиент
+	w.Header().Add("Set-Cookie", fmt.Sprintf("refresh-token=%s; HttpOnly", refreshToken))
+	w.Header().Add("Content-Type", "application/json")
+	w.Write(response)
+}
+
+func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("refresh-token")
+	if err != nil {
+		logError("refresh", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	logrus.Infof("%s", cookie.Value)
+
+	accessToken, refreshToken, err := h.userService.RefreshTokens(r.Context(), cookie.Value)
+	if err != nil {
+		logError("signIn", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	response, err := json.Marshal(map[string]string{
+		"token": accessToken,
+	})
+	if err != nil {
+		logError("signIn", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Set-Cookie", fmt.Sprintf("refresh-token='%s'; HttpOnly", refreshToken))
 	w.Header().Add("Content-Type", "application/json")
 	w.Write(response)
 }

@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	BananaTable = "banana"
+	BananaTable = "bananas"
 	UsersTable = "users"
 )
 
