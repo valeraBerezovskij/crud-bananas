@@ -2,8 +2,8 @@ package app
 
 import (
 	"os"
-	grpc_client "valerii/crudbananas/internal/delivery/grpc"
 	"valerii/crudbananas/internal/delivery/rest"
+	rmq "valerii/crudbananas/internal/delivery/rabbitmq"
 	"valerii/crudbananas/internal/repository/pdb"
 	"valerii/crudbananas/internal/server"
 	"valerii/crudbananas/internal/service"
@@ -33,8 +33,7 @@ func Run() {
 	if err := godotenv.Load(); err != nil {
 		log.Fatalf("error loading env file: %s", err.Error())
 	}
-	
-	log.Println("DB_PORT:", os.Getenv("DB_PORT"))
+		
 	//Инициализация структуры БД
 	db, err := database.NewPostgresConnection(database.ConnectionInfo{
 		Host:     os.Getenv("DB_HOST"),
@@ -57,15 +56,16 @@ func Run() {
 	tokensRepo := pdb.NewTokens(db)
 	usersRepo := pdb.NewUsers(db)
 	
-	//Инициализация gRPC клиента
-	auditClient, err := grpc_client.NewClient(9000)
+	//Инициализация RabbitMQ клиента
+	audit, err := rmq.NewRabbitMQClient("amqp://guest:guest@localhost:5672/", "logs")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("failed to initialize RabbitMQ client: ", err)
 	}
+	defer audit.Close()
 
 	//Инициализация сервисов
-	bananasService := service.NewBananas(bananasRepo, auditClient)
-	usersService := service.NewUsers(usersRepo, tokensRepo, auditClient, hasher, []byte("sample secret"))
+	bananasService := service.NewBananas(bananasRepo, audit)
+	usersService := service.NewUsers(usersRepo, tokensRepo, audit, hasher, []byte("sample secret"))
 
 	//Инициализация хендлера
 	handlers := rest.NewHandler(bananasService, usersService)

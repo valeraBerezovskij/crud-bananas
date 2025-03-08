@@ -11,7 +11,6 @@ type Banana struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-
 type BananaUpdate struct {
 	Name      string    `json:"name"`
 	Color     string    `json:"color"`

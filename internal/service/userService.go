@@ -15,7 +15,7 @@ import (
 )
 
 type AuditClient interface {
-	SendLogRequest(ctx context.Context, req audit.LogItem) error
+	SendLogRequest(req audit.LogItem) error
 }
 
 type PasswordHasher interface {
@@ -71,22 +71,15 @@ func (s *Users) SignUp(ctx context.Context, inp domain.SignUpInput) error {
 		return err
 	}
 
-	//Получения user'a для ID
-	user, err = s.userRepo.GetByCredentials(ctx, inp.Email, password)
-	if err != nil {
-		return err
-	}
-
-	//Логирование
-	if err := s.auditClient.SendLogRequest(ctx, audit.LogItem{
-		Action:    audit.ACTION_REGISTER,
-		Entity:    audit.ENTITY_USER,
+	if err := s.auditClient.SendLogRequest(audit.LogItem{
+		Action:    "LOGIN",
+		Entity:    "USER",
 		EntityID:  user.ID,
 		Timestamp: time.Now(),
 	}); err != nil {
 		logrus.WithFields(logrus.Fields{
-			"method": "Users.SignUp",
-		}).Error("failed to send log request:", err)
+			"handler": "SignUp",
+		}).Error(err)
 	}
 
 	return nil
@@ -109,22 +102,10 @@ func (s *Users) SignIn(ctx context.Context, inp domain.SignInInput) (string, str
 		return "", "", err
 	}
 
-	//Генерируем токены 
+	//Генерируем токены
 	accessToken, refreshToken, err := s.generateTokens(ctx, user.ID)
-	if err != nil{
+	if err != nil {
 		return "", "", err
-	}
-
-	//Логгирование
-	if err := s.auditClient.SendLogRequest(ctx, audit.LogItem{
-		Action: audit.ACTION_LOGIN,
-		Entity: audit.ENTITY_USER,
-		EntityID: user.ID,
-		Timestamp: time.Now(),
-	}); err != nil{
-		logrus.WithFields(logrus.Fields{
-			"method": "Users.SignIn",
-		}).Error("failed to send log request:", err)
 	}
 
 	return accessToken, refreshToken, nil
@@ -170,8 +151,8 @@ func (s *Users) ParseToken(ctx context.Context, token string) (int64, error) {
 }
 
 /*
-	generateTokens() генерирует access и refresh токены
-	и создает их БД
+generateTokens() генерирует access и refresh токены
+и создает их БД
 */
 func (s *Users) generateTokens(ctx context.Context, userId int64) (string, string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.StandardClaims{
