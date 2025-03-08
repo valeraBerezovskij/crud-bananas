@@ -15,7 +15,7 @@ import (
 )
 
 type AuditClient interface {
-	SendLogRequest(req audit.LogItem) error
+	SendLogRequest(ctx context.Context, req audit.LogItem) error
 }
 
 type PasswordHasher interface {
@@ -71,10 +71,15 @@ func (s *Users) SignUp(ctx context.Context, inp domain.SignUpInput) error {
 		return err
 	}
 
-	if err := s.auditClient.SendLogRequest(audit.LogItem{
-		Action:    "LOGIN",
+	userCred, err := s.userRepo.GetByCredentials(ctx, inp.Email, password)
+	if err != nil{
+		return err
+	}
+
+	if err := s.auditClient.SendLogRequest(ctx, audit.LogItem{
+		Action:    "REGISTER",
 		Entity:    "USER",
-		EntityID:  user.ID,
+		EntityID:  userCred.ID,
 		Timestamp: time.Now(),
 	}); err != nil {
 		logrus.WithFields(logrus.Fields{
@@ -106,6 +111,17 @@ func (s *Users) SignIn(ctx context.Context, inp domain.SignInInput) (string, str
 	accessToken, refreshToken, err := s.generateTokens(ctx, user.ID)
 	if err != nil {
 		return "", "", err
+	}
+
+	if err := s.auditClient.SendLogRequest(ctx, audit.LogItem{
+		Action:    "LOGIN",
+		Entity:    "USER",
+		EntityID:  user.ID,
+		Timestamp: time.Now(),
+	}); err != nil {
+		logrus.WithFields(logrus.Fields{
+			"handler": "SignIn",
+		}).Error(err)
 	}
 
 	return accessToken, refreshToken, nil

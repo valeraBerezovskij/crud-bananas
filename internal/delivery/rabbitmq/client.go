@@ -1,8 +1,11 @@
 package rabbitmq
 
 import (
-	"github.com/streadway/amqp"
+	"context"
 	"encoding/json"
+	"valerii/crudbananas/internal/domain"
+
+	"github.com/streadway/amqp"
 	audit "github.com/valeraBerezovskij/logger-mongo/pkg/domain"
 )
 
@@ -45,8 +48,21 @@ func NewRabbitMQClient(amqpURL, queueName string) (*RabbitMQClient, error) {
 	}, nil
 }
 
-func (c *RabbitMQClient) SendLogRequest(item audit.LogItem) error {
-	body, err := json.Marshal(item)
+func (c *RabbitMQClient) SendLogRequest(ctx context.Context, item audit.LogItem) error {
+	ctxMap := make(map[string]interface{})
+
+    if metadata, ok := ctx.Value("metadata").(map[string]interface{}); ok {
+        for key, value := range metadata {
+            ctxMap[key] = value
+        }
+    }
+
+	message := domain.LogMessage{
+		Context: ctxMap,
+		LogItem: item,
+	}
+
+	body, err := json.Marshal(message)
 	if err != nil {
 		return err
 	}
